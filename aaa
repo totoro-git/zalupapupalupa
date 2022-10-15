@@ -1,0 +1,177 @@
+#include "main.h"
+#include <thread>
+#include <chrono>
+
+SAMPFUNCS *SF = new SAMPFUNCS();
+bool g_MenuActive = false;
+bool menustate = false;
+using namespace std;
+bool c_delwarn = false;
+bool c_unwarn = false;
+bool c_unban = false;
+bool isactive = false;
+
+std::ifstream f;
+
+
+void CALLBACK cmd_delwarn(string params)
+{
+	g_MenuActive = !g_MenuActive;
+}
+
+//void CALLBACK cmd_active(string params)
+//{
+//	isactive = true;
+//	f.open("SAMPFUNCS\\test.txt", std::ios_base::in);
+//	SF->getSAMP()->getChat()->AddChatMessage(-1, "теперь isactive = true");
+//}
+
+void CALLBACK tfile_delwarn()
+{
+	isactive = true;
+	f.open("SAMPFUNCS\\test.txt", std::ios_base::in);
+	SF->getSAMP()->getChat()->AddChatMessage(-1, "Действие запущено");
+}
+
+bool CALLBACK Present(CONST RECT* pSourceRect, CONST RECT* pDestRect, HWND hDestWindowOverride, CONST RGNDATA* pDirtyRegion) {
+	if (SUCCEEDED(SF->getRender()->BeginRender())) {
+		if (SF->getRender()->CanDraw() && !SF->getGame()->isGTAMenuActive()) {
+			if (g_MenuActive)
+			{
+				ImGui_ImplDX9_NewFrame();
+				ImGui_ImplWin32_NewFrame();
+				ImGui::NewFrame();
+				ImGui::SetNextWindowSize(ImVec2(600, 300), ImGuiCond_::ImGuiCond_FirstUseEver);
+				ImGui::SetNextWindowPos(ImVec2(GetSystemMetrics(SM_CXSCREEN) / 2, GetSystemMetrics(SM_CYSCREEN) / 2), ImGuiCond_::ImGuiCond_FirstUseEver, ImVec2(0.5, 0.5));
+				if (ImGui::Begin(u8"Снимаем наказания", &g_MenuActive, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_AlwaysAutoResize))
+				{
+					ImGui::Text(u8"здарова");
+					ImGui::Checkbox(u8"Удалить варны (файл delwarn)", &c_delwarn); 
+					ImGui::Checkbox(u8"Снять варны (файл unwarn)", &c_unwarn);
+					//ImGui::InputText(u8"Причина снятия", );
+					ImGui::Checkbox(u8"Снять баны (файл unban)", &c_unban);
+
+					if (ImGui::Button(u8"Запустить", ImVec2(ImGui::GetContentRegionAvailWidth(), 30.0f)))
+					{
+						if (c_delwarn == true)
+						{
+							tfile_delwarn();
+						}
+						else
+						{
+							SF->getSAMP()->getChat()->AddChatMessage(-1, "Отметьте нужное действие");
+						}
+					};
+					ImGui::End();
+				}
+				ImGui::EndFrame();
+				ImGui::Render();
+				ImGui_ImplDX9_RenderDrawData(ImGui::GetDrawData());
+			}
+		}
+		SF->getRender()->EndRender();
+	}
+	return true;
+}
+
+bool CALLBACK Reset(D3DPRESENT_PARAMETERS* pPresentParams) {
+	ImGui_ImplDX9_InvalidateDeviceObjects();
+	return true;
+}
+
+
+extern LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
+bool CALLBACK WndProcHandler(HWND hwd, UINT msg, WPARAM wParam, LPARAM lParam) {
+	ImGui_ImplWin32_WndProcHandler(hwd, msg, wParam, lParam);
+	return true;
+}
+
+void CALLBACK Destructor() {
+	ImGui_ImplDX9_Shutdown();
+	ImGui_ImplWin32_Shutdown();
+	ImGui::DestroyContext();
+}
+
+void test()
+{
+	if (isactive == true)
+	{
+		static DWORD time = 0;
+		if (GetTickCount() - time > 1200)
+		{
+			if (f.is_open())
+			{
+				char szBuffer[64];
+				memset(szBuffer, 0, 64);
+				if(f.getline(szBuffer, 63))
+				{
+					char nick[32];
+					int count;
+					sscanf(szBuffer, "%s", nick);
+
+					char str[128];
+					sprintf(str, "delwarn %s", nick); 
+					SF->getSAMP()->getPlayers()->pLocalPlayer->Say(str);
+				}
+				else
+				{
+					f.close();
+					isactive = false;
+				}
+			}
+			time = GetTickCount();
+		}
+	}
+}
+
+
+void CALLBACK mainloop() {
+	static bool initialized = false;
+	
+	if (!initialized) {
+		if (GAME == nullptr || GAME->GetSystemState() != eSystemState::GS_PLAYING_GAME || !SF->getSAMP()->IsInitialized()) return;
+		ImGui::CreateContext();
+		ImGuiIO& io = ImGui::GetIO(); (void)io;
+		ImGui_ImplWin32_Init(GetActiveWindow());
+		ImGui_ImplDX9_Init(SF->getRender()->getD3DDevice());
+		io.Fonts->AddFontFromFileTTF("C:\\Windows\\Fonts\\Arial.ttf", 15, NULL, ImGui::GetIO().Fonts->GetGlyphRangesCyrillic());
+		SF->getRender()->registerD3DCallback(eDirect3DDeviceMethods::D3DMETHOD_PRESENT, Present);
+		SF->getRender()->registerD3DCallback(eDirect3DDeviceMethods::D3DMETHOD_RESET, Reset);
+		SF->getGame()->registerWndProcCallback(SFGame::MEDIUM_CB_PRIORITY, WndProcHandler);
+
+		SF->getSAMP()->getChat()->AddChatMessage(0x00edd5, "[Тест на пидора] activated.");
+		SF->getSAMP()->registerChatCommand("cmd", cmd_delwarn);
+
+		//SF->getSAMP()->registerChatCommand("cmd1", cmd_active);
+		initialized = true;
+	}
+	else 
+	{
+		if (menustate != g_MenuActive)
+		{
+			SF->getSAMP()->getMisc()->ToggleCursor(g_MenuActive);
+			menustate = g_MenuActive;
+		}
+		if (g_MenuActive)
+		{
+			SF->getSAMP()->getMisc()->ToggleCursor(g_MenuActive);
+		}
+		test();
+	}
+}
+
+BOOL APIENTRY DllMain(HMODULE hModule, DWORD dwReasonForCall, LPVOID lpReserved) {
+	switch (dwReasonForCall) {
+	case DLL_PROCESS_ATTACH:
+		SF->initPlugin(mainloop, hModule);
+		break;
+	case DLL_THREAD_ATTACH:
+	case DLL_THREAD_DETACH:
+		break;
+	case DLL_PROCESS_DETACH:
+		Destructor(); // добавил сюда, ибо иногда бывает, что деструктор не вызывается
+		break;
+	}
+
+	return TRUE;
+}
